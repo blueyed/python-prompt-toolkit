@@ -124,7 +124,7 @@ class Layout(object):
 
         return self._token_lru_cache.get(buffer.text, get)
 
-    def get_highlighted_characters(self, buffer):
+    def _get_highlighted_characters(self, buffer):
         """
         Return a dictionary that maps the index of input string characters to
         their Token in case of highlighting.
@@ -164,7 +164,7 @@ class Layout(object):
 
         # Apply highlighting.
         if not (cli.is_exiting or cli.is_aborting or cli.is_returning):
-            highlighted_characters = self.get_highlighted_characters(self._buffer(cli))
+            highlighted_characters = self._get_highlighted_characters(self._buffer(cli))
 
             for index, token in highlighted_characters.items():
                 input_tokens[index] = (token, input_tokens[index][1])
@@ -175,7 +175,7 @@ class Layout(object):
                               string_index=index,
                               set_cursor_position=(index == self._buffer(cli).cursor_position))
 
-    def write_input_scrolled(self, cli, screen, write_content,
+    def _write_input_scrolled(self, cli, screen, write_content,
                              min_height=1, top_margin=0, bottom_margin=0):
         """
         Write visible part of the input to the screen. (Scroll if the input is
@@ -290,7 +290,7 @@ class Layout(object):
             y += t.height
 
         # Write actual content (scrolled).
-        y = self.write_input_scrolled(cli, screen,
+        y = self._write_input_scrolled(cli, screen,
                                       lambda scr: self.write_content(cli, scr),
                                       min_height=max(self.min_height, min_height),
                                       top_margin=top_toolbars_height,
