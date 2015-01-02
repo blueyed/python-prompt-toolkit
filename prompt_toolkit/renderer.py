@@ -32,7 +32,7 @@ Size = namedtuple('Size', 'rows columns')
 
 
 class Char(object):
-    __slots__ = ('char', 'token', 'z_index')
+    __slots__ = ('char', 'token', 'z_index', 'width')
 
     # If we end up having one of these special control sequences in the input string,
     # we should display them as follows:
@@ -80,15 +80,9 @@ class Char(object):
         self.token = token
         self.z_index = z_index
 
-    def get_width(self):
-        # We use the `max(0, ...` because some non printable control
-        # characters, like e.g. Ctrl-underscore get a -1 wcwidth value.
-        # It can be possible that these characters end up in the input text.
-        char = self.char
-        if len(char) == 1:
-            return get_cwidth(char)
-        else:
-            return sum(get_cwidth(c) for c in char)
+        # Calculate width. (We always need this, so better to store it directly
+        # as a member for performance.)
+        self.width = get_cwidth(char)
 
     def __repr__(self):
         return 'Char(%r, %r, %r)' % (self.char, self.token, self.z_index)
@@ -127,7 +121,7 @@ class Screen(object):
         assert len(char) == 1
 
         char_obj = Char(char, token, z_index)
-        char_width = char_obj.get_width()
+        char_width = char_obj.width
 
         # In case there is no more place left at this line, go first to the
         # following line. (Also in case of double-width characters.)
@@ -189,7 +183,7 @@ class Screen(object):
             for c in text:
                 char_obj = Char(c, token, z_index)
                 self.write_at_pos(y, x, char_obj)
-                x += char_obj.get_width()
+                x += char_obj.width
 
     def write_highlighted(self, data):
         """
@@ -212,7 +206,7 @@ class Screen(object):
         for token, text in data:
             for char in text:
                 char_obj = Char(char, token, z_index)
-                char_width = char_obj.get_width()
+                char_width = char_obj.width
 
                 # In case there is no more place left at this line, go first to the
                 # following line. (Also in case of double-width characters.)
@@ -397,7 +391,7 @@ def output_screen_diff(output, screen, current_pos, previous_screen=None, last_c
         # Loop over the columns.
         c = 0
         while c < new_max_line_len + 1:
-            char_width = (new_row[c].get_width() or 1)
+            char_width = (new_row[c].width or 1)
 
             if not chars_are_equal(new_row[c], previous_row[c]):
                 current_pos = move_cursor(Point(y=y, x=c))

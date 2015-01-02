@@ -57,15 +57,23 @@ class _CharSizesCache(dict):
     """
     Cache for wcwidth sizes.
     """
-    def __missing__(self, character):
-        result = wcwidth(character)
-        self[character] = result
+    def __missing__(self, string):
+        # Note: We use the `max(0, ...` because some non printable control
+        #       characters, like e.g. Ctrl-underscore get a -1 wcwidth value.
+        #       It can be possible that these characters end up in the input
+        #       text.
+        if len(string) == 1:
+            result = max(0, wcwidth(string))
+        else:
+            result = sum(max(0, wcwidth(c)) for c in string)
+
+        self[string] = result
         return result
 
 _CHAR_SIZES_CACHE = _CharSizesCache()
 
-def get_cwidth(c):
+def get_cwidth(string):
     """
-    Return width of character. Wrapper around ``wcwidth``.
+    Return width of a string. Wrapper around ``wcwidth``.
     """
-    return _CHAR_SIZES_CACHE[c]
+    return _CHAR_SIZES_CACHE[string]
