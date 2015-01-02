@@ -289,10 +289,20 @@ class Window(Layout):
     def _copy(self, temp_screen, new_screen, xpos, ypos, width, height):
         columns = temp_screen.size.columns
 
+        temp_buffer = temp_screen._buffer
+        new_buffer = new_screen._buffer
+
         # Now copy the region we need to the real screen.
         for y in range(0, min(height, temp_screen.current_height)):
+            # We keep local row variables. (Don't look up the row in the dict
+            # for each iteration of the nested loop.)
+            temp_row = temp_buffer[y + self.vertical_scroll]
+            new_row = new_buffer[y + ypos]
+
+                # XXX: if we don't use nested default dicts, we can do:
+                #      a[xpos:xpos+columns] = b[0:columns]
             for x in range(0, columns):
-                new_screen._buffer[y + ypos][x + xpos] = temp_screen._buffer[y + self.vertical_scroll][x]
+                new_row[x + xpos] = temp_row[x]
 
 #        new_screen.cursor_position = Point(y=temp_screen.cursor_position.y - self.vertical_scroll,
 #                                           x=temp_screen.cursor_position.x)
