@@ -97,9 +97,6 @@ class Char(object):
 class Screen(object):
     """
     Two dimentional buffer for the output.
-
-    :param style: Pygments style.
-    :param grayed: True when all tokes should be replaced by `Token.Aborted`
     """
     def __init__(self, size):
         self._buffer = defaultdict(lambda: defaultdict(Char))
@@ -201,6 +198,84 @@ class Screen(object):
         for token, text in data:
             for c in text:
                 self.write_char(c, token=token)
+
+    def write_at_position(self, data, write_position, z_index=0):  # XXX: make DRY.
+        """
+        Write data at :class:`WritePosition`.
+        """
+        x = write_position.xpos
+        y = write_position.ypos
+        width = write_position.width
+        max_x = x + width
+        max_y = y + write_position.min_height
+
+        for token, text in data:
+            for char in text:
+                char_obj = Char(char, token, z_index)
+                char_width = char_obj.get_width()
+
+                # In case there is no more place left at this line, go first to the
+                # following line. (Also in case of double-width characters.)
+                if x + char_width > max_x:
+                    y += 1
+                    x = write_position.xpos
+
+                    if y >= max_y:
+                        return
+
+                insert_pos = self._y, self._x  # XXX: make a Point of this?
+
+#                if string_index is not None:
+#                    self._cursor_mappings[string_index] = insert_pos
+
+#                if set_cursor_position:
+#                    self.cursor_position = Point(y=self._y, x=self._x)
+
+                # Insertion of newline
+                if char == '\n':
+                    y += 1
+                    x = write_position.xpos
+#                    line_number += 1
+
+                    if y >= max_y:
+                        return
+
+                # Insertion of a 'visible' character.
+                else:
+                    if char_obj.z_index >= self._buffer[y][x].z_index:
+                        self._buffer[y][x] = char_obj
+
+                    # When we have a double width character, store this byte in the
+                    # second cell. So that if this character gets deleted afterwarsd,
+                    # the ``output_screen_diff`` will notice that this byte is also
+                    # gone and redraw both cells.
+                    if char_width > 1:
+                        self._buffer[y][x+1] = Char(six.unichr(0))
+
+                    # Move position
+                    x += char_width
+
+        return insert_pos
+
+
+
+class WritePosition(object):
+    def __init__(self, xpos, ypos, width, min_height, max_height=None):
+        assert min_height >= 0
+        assert max_height is None or max_height >= 0
+        assert width >= 0
+        assert xpos >= 0
+        assert ypos >= 0
+
+        self.xpos = xpos
+        self.ypos = ypos
+        self.width = width
+        self.min_height = min_height  # XXX: rename to height.
+        self.max_height = max_height or min_height  # XXX: rename to 'extended_height'
+
+    def __repr__(self):
+        return 'WritePosition(%r, %r, %r %r, %r)' % (
+            self.xpos, self.ypos, self.width, self.min_height, self.max_height)
 
 
 def output_screen_diff(output, screen, current_pos, previous_screen=None, last_char=None, accept_or_abort=False, style=None, grayed=False):
@@ -453,12 +528,19 @@ class Renderer(object):
 
         height = self._last_screen.current_height if self._last_screen else 0
         height = max(self._min_available_height, height)
-        self.layout.write_to_screen(cli, screen, height)
+#        self.layout.write_to_screen(cli, screen, height)
+
+        self.layout.write_to_screen(cli, screen, WritePosition(
+            xpos=0,
+            ypos=0,
+            width=screen.size.columns,
+            min_height=height,
+            max_height=screen.size.rows,
+        ))
 
         accept_or_abort = cli.is_exiting or cli.is_aborting or cli.is_returning
 
         # Process diff and write to output.
-        output_buffer = []
         self._cursor_pos, self._last_char = output_screen_diff(
             output, screen, self._cursor_pos,
             self._last_screen, self._last_char, accept_or_abort,
