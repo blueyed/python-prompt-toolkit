@@ -78,6 +78,7 @@ def _max_layout_dimensions(dimensions):
     return LayoutDimension(min=min_, max=max_)
 
 
+@add_metaclass(ABCMeta)
 class Layout(object):
     """
     Base class for user interface layout.
@@ -99,8 +100,6 @@ class Layout(object):
     @abstractmethod
     def write_to_screen(self, cli, screen, write_position):
         pass
-
-Layout = add_metaclass(ABCMeta)(Layout)
 
 
 class HSplit(Layout):
@@ -227,11 +226,16 @@ class Window(Layout):
         self._width = width
         self._height = height
 
+        self.reset()
+
     def __repr__(self):
         return 'Window(content=%r)' % self.content
 
     def reset(self):
         self.content.reset()
+
+        #: Vertical scrolling position of the main content.
+        self.vertical_scroll = 0
 
     def width(self, cli):
         if self.filter is None or self.filter(cli):
@@ -259,18 +263,50 @@ class Window(Layout):
             container_height = max(height.min, min(height.max, write_position.min_height))
             container_max_height = min(height.max, write_position.max_height)
 
+#            write_position = WritePosition(write_position.xpos,
+#                                           write_position.ypos,
+#                                           container_width,
+#                                           container_height,
+#                                           container_max_height))
+
             # Set position.
-            self.content.write_to_screen(
-                cli, screen, WritePosition(write_position.xpos,
-                                           write_position.ypos,
-                                           container_width,
-                                           container_height,
-                                           container_max_height))
+            temp_screen = self._write_to_temp_screen(cli, container_width, container_height)
+            self._copy(temp_screen, screen, write_position.xpos, write_position.ypos, container_width, container_height)
+
+#            self.content.write_to_screen(
+#                cli, screen, WritePosition(write_position.xpos,
+#                                           write_position.ypos,
+#                                           container_width,
+#                                           container_height,
+#                                           container_max_height))
+
         else:
             # Show window too small messsage...
             pass
 
+    def _write_to_temp_screen(self, cli, width, height):
+        # Create new screen with infinite size.
+        temp_screen = Screen(Size(rows=2**1000, columns=width))
 
+        # Write the control on this infinite screen.
+        self.content.write_to_screen(cli, temp_screen, width, height)
+
+        return temp_screen
+
+    def _copy(self, temp_screen, new_screen, xpos, ypos, width, height):
+        columns = temp_screen.size.columns
+
+        # Now copy the region we need to the real screen.
+        for y in range(0, min(height, temp_screen.current_height)):
+            for x in range(0, columns):
+                new_screen._buffer[y + ypos][x + xpos] = temp_screen._buffer[y + self.vertical_scroll][x]
+
+#        new_screen.cursor_position = Point(y=temp_screen.cursor_position.y - self.vertical_scroll,
+#                                           x=temp_screen.cursor_position.x)
+
+
+
+@add_metaclass(ABCMeta)
 class UIControl(object):
     """
     Base class for all user interface controls.
@@ -280,13 +316,11 @@ class UIControl(object):
         pass
 
     @abstractmethod
-    def write_to_screen(self, cli, screen, write_position):
+    def write_to_screen(self, cli, screen, width, height):
         """
         Write the content at this position to the screen.
         """
         pass
-
-UIControl = add_metaclass(ABCMeta)(UIControl)
 
 
 class StaticControl(UIControl):
@@ -296,8 +330,8 @@ class StaticControl(UIControl):
     def __repr__(self):
         return 'StaticControl(%r)' % self.tokens
 
-    def write_to_screen(self, cli, screen, write_position):
-        screen.write_at_position(self.tokens, write_position)
+    def write_to_screen(self, cli, screen, width, height):
+        screen.write_at_position(self.tokens, WritePosition(0, 0, width, height))
 
 
 class FillControl(UIControl):
@@ -315,53 +349,12 @@ class FillControl(UIControl):
     def reset(self):
         pass
 
-    def write_to_screen(self, cli, screen, write_position):
+    def write_to_screen(self, cli, screen, width, height):
         c = Char(char=self.character, token=self.token)
 
-        for x in range(write_position.xpos, write_position.xpos + write_position.width):
-            for y in range(write_position.ypos, write_position.ypos + write_position.min_height):
+        for x in range(0, width):
+            for y in range(0, height):
                 screen.write_at_pos(y, x, c)
-
-
-class ScrollContainer(UIControl):
-    def __init__(self, ui_control):
-        assert isinstance(ui_control, UIControl)
-        self.ui_control = ui_control
-
-    def reset(self):
-        #: Vertical scrolling position of the main content.
-        self.vertical_scroll = 0
-
-    def write_to_screen(self, cli, screen, write_position):
-        # Create new screen with infinite size.
-        temp_screen = Screen(Size(rows=2**100, columns=write_position.width))
-
-        # Write the control on this infinite screen.
-        self.ui_control.write_to_screen(cli, temp_screen,
-            WritePosition(0, 0, write_position.width, min_height=0, max_height=2**100))
-
-        # Calculate scroll offset.
-        # TODO...
-
-        # Copy visible information to real screen.
-        self._copy(temp_screen, screen, write_position)
-
-        # Insert tildes until write_positon.min_height
-
-        # TODO: mabye for later: pass menu position up to parent.
-        pass
-
-    def _copy(self, temp_screen, new_screen, write_position):
-        columns = temp_screen.size.columns
-
-        # Now copy the region we need to the real screen.
-        for y in range(0, min(write_position.max_height, temp_screen.current_height)):
-            for x in range(0, columns):
-                new_screen._buffer[y + write_position.ypos][x + write_position.xpos] = temp_screen._buffer[y + self.vertical_scroll][x]
-
-        new_screen.cursor_position = Point(y=temp_screen.cursor_position.y - self.vertical_scroll,
-                                           x=temp_screen.cursor_position.x)
-
 
 
 class BufferControl(UIControl):
@@ -459,20 +452,6 @@ class BufferControl(UIControl):
 
         return highlighted_characters
 
-#    def write_to_screen(self, cli, screen, write_position):
-#        #if self.before_input is not None:
-#        #    self.before_input.write(cli, screen)
-#
-#        y = self._write_input_scrolled(cli, screen,
-#                                      lambda scr: self.write_content(cli, scr),
-#                                      min_height=max(self.min_height, min_height),
-
-
-  #  def write_content(
-
-  #      self._write_input(cli, screen)
-  #      #if self.after_input is not None:
-  #      #    self.after_input.write(cli, screen)
     def _write_input(self, cli, screen):
         # Get tokens
         # Note: we add the space character at the end, because that's where
@@ -496,10 +475,7 @@ class BufferControl(UIControl):
                               set_cursor_position=(index == self._buffer(cli).cursor_position))
 
 
-    def write_to_screen(self, cli, screen, write_position):
-#    def _write_input_scrolled(self, cli, screen, write_position):
-#            write_content,
-#                             min_height=1, top_margin=0, bottom_margin=0):
+    def write_to_screen(self, cli, screen, width, height):
         """
         Write visible part of the input to the screen. (Scroll if the input is
         too large.)
@@ -507,21 +483,10 @@ class BufferControl(UIControl):
         :return: Cursor row position after the scroll region.
         """
         left_margin_width = self.left_margin.width(cli) if self.left_margin else 0
-
-#        # Make sure that `min_height` is in the 0..max_height interval.
-#        min_height = min(min_height, screen.size.rows)
-#        min_height = max(0, min_height)
 #
-        # Write to a temp screen first. (Later, we will copy the visible region
-        # of this screen to the real screen.)
-        temp_screen = Screen(Size(columns=screen.size.columns - left_margin_width,
-                                  rows=screen.size.rows))
-        self._write_input(cli, temp_screen)
+        self._write_input(cli, screen)
 
-        # Determine the maximum height.
-#        max_height = screen.size.rows - bottom_margin - top_margin
-        max_height = write_position.max_height
-
+        """
         # Scroll.
         if True:
             # Scroll back if we scrolled to much and there's still space at the top.
@@ -541,24 +506,12 @@ class BufferControl(UIControl):
                 menu_size = self.menus[0].get_height(self._buffer(cli).complete_state)
                 if temp_screen.cursor_position.y - self.vertical_scroll >= max_height - menu_size:
                     self.vertical_scroll = (temp_screen.cursor_position.y + 1) - (max_height - menu_size)
+        """
 
-        # Now copy the region we need to the real screen.
-        y = 0
-        for y in range(0, min(max_height, temp_screen.current_height - self.vertical_scroll)):
-            if self.left_margin:
-                # Write left margin. (XXX: line numbers are still not correct in case of line wraps!!!)
-                screen._y = y
-                screen._x = 0
-                self.left_margin.write(cli, screen, y, y + self.vertical_scroll)
+        screen.cursor_position = Point(y=screen.cursor_position.y - self.vertical_scroll,
+                                       x=screen.cursor_position.x + left_margin_width)
 
-            # Write line content.
-            for x in range(0, temp_screen.size.columns):
-                screen._buffer[y][x + left_margin_width] = temp_screen._buffer[y + self.vertical_scroll][x]
-
-        screen.cursor_position = Point(y=temp_screen.cursor_position.y - self.vertical_scroll,
-                                       x=temp_screen.cursor_position.x + left_margin_width)
-
-        y_after_input = y
+        return # XXX
 
         # Show completion menu.
         if self._need_to_show_completion_menu(cli):
