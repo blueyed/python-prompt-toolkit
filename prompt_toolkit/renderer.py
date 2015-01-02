@@ -86,9 +86,9 @@ class Char(object):
         # It can be possible that these characters end up in the input text.
         char = self.char
         if len(char) == 1:
-            return max(0, get_cwidth(char))
+            return get_cwidth(char)
         else:
-            return max(0, sum(get_cwidth(c) for c in char))
+            return sum(get_cwidth(c) for c in char)
 
     def __repr__(self):
         return 'Char(%r, %r, %r)' % (self.char, self.token, self.z_index)
@@ -333,10 +333,11 @@ def output_screen_diff(output, screen, current_pos, previous_screen=None, last_c
         """
         Test whether two `Char` instances are equal if printed.
         """
-        new_token = Token.Aborted if grayed else new_char.token
+#        new_token = Token.Aborted if grayed else new_char.token
+        new_token = new_char.token
 
         # We ignore z-index, that does not matter if things get painted.
-        return new_char.char == old_char.char and new_token == old_char.token
+        return new_char.char == old_char.char and new_char.token == old_char.token
 
     def output_char(char):
         """

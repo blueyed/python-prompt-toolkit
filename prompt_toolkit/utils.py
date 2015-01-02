@@ -1,6 +1,7 @@
 from __future__ import unicode_literals
 
 import six
+from collections import defaultdict
 
 try:
     from wcwidth import wcwidth
@@ -52,15 +53,19 @@ class DummyContext(object):
         pass
 
 
-#: Cache for wcwidth sizes.
-_CHAR_SIZES_CACHE = [wcwidth(six.unichr(i)) for i in range(0, 64000)]
+class _CharSizesCache(dict):
+    """
+    Cache for wcwidth sizes.
+    """
+    def __missing__(self, character):
+        result = wcwidth(character)
+        self[character] = result
+        return result
 
+_CHAR_SIZES_CACHE = _CharSizesCache()
 
 def get_cwidth(c):
     """
     Return width of character. Wrapper around ``wcwidth``.
     """
-    try:
-        return _CHAR_SIZES_CACHE[ord(c)]
-    except IndexError:
-        return wcwidth(c)
+    return _CHAR_SIZES_CACHE[c]

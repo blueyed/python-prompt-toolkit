@@ -273,13 +273,6 @@ class Window(Layout):
             temp_screen = self._write_to_temp_screen(cli, container_width, container_height)
             self._copy(temp_screen, screen, write_position.xpos, write_position.ypos, container_width, container_height)
 
-#            self.content.write_to_screen(
-#                cli, screen, WritePosition(write_position.xpos,
-#                                           write_position.ypos,
-#                                           container_width,
-#                                           container_height,
-#                                           container_max_height))
-
         else:
             # Show window too small messsage...
             pass
@@ -303,6 +296,29 @@ class Window(Layout):
 
 #        new_screen.cursor_position = Point(y=temp_screen.cursor_position.y - self.vertical_scroll,
 #                                           x=temp_screen.cursor_position.x)
+
+
+        """
+        # Scroll.
+        if True:
+            # Scroll back if we scrolled to much and there's still space at the top.
+            if self.vertical_scroll > temp_screen.current_height - max_height:
+                self.vertical_scroll = max(0, temp_screen.current_height - max_height)
+
+            # Scroll up if cursor is before visible part.
+            if self.vertical_scroll > temp_screen.cursor_position.y:
+                self.vertical_scroll = temp_screen.cursor_position.y
+
+            # Scroll down if cursor is after visible part.
+            if self.vertical_scroll <= temp_screen.cursor_position.y - max_height:
+                self.vertical_scroll = (temp_screen.cursor_position.y + 1) - max_height
+
+            # Scroll down if we need space for the menu.
+            if self._need_to_show_completion_menu(cli):
+                menu_size = self.menus[0].get_height(self._buffer(cli).complete_state)
+                if temp_screen.cursor_position.y - self.vertical_scroll >= max_height - menu_size:
+                    self.vertical_scroll = (temp_screen.cursor_position.y + 1) - (max_height - menu_size)
+        """
 
 
 
@@ -486,27 +502,6 @@ class BufferControl(UIControl):
 #
         self._write_input(cli, screen)
 
-        """
-        # Scroll.
-        if True:
-            # Scroll back if we scrolled to much and there's still space at the top.
-            if self.vertical_scroll > temp_screen.current_height - max_height:
-                self.vertical_scroll = max(0, temp_screen.current_height - max_height)
-
-            # Scroll up if cursor is before visible part.
-            if self.vertical_scroll > temp_screen.cursor_position.y:
-                self.vertical_scroll = temp_screen.cursor_position.y
-
-            # Scroll down if cursor is after visible part.
-            if self.vertical_scroll <= temp_screen.cursor_position.y - max_height:
-                self.vertical_scroll = (temp_screen.cursor_position.y + 1) - max_height
-
-            # Scroll down if we need space for the menu.
-            if self._need_to_show_completion_menu(cli):
-                menu_size = self.menus[0].get_height(self._buffer(cli).complete_state)
-                if temp_screen.cursor_position.y - self.vertical_scroll >= max_height - menu_size:
-                    self.vertical_scroll = (temp_screen.cursor_position.y + 1) - (max_height - menu_size)
-        """
 
         screen.cursor_position = Point(y=screen.cursor_position.y - self.vertical_scroll,
                                        x=screen.cursor_position.x + left_margin_width)
@@ -537,169 +532,3 @@ class BufferControl(UIControl):
                 y += 1
 
         return return_value
-
-
-
-class OldLayout(object):
-    """
-    Default prompt class.
-
-    :param before_input: What to show before the actual input.
-    :param input_processors: Processors for transforming the tokens received
-                             from the `Code` object. (This can be used for
-                             displaying password input as '*' or for
-                             highlighting mismatches of brackets in case of
-                             Python input.)
-    :param menus: List of `Menu` classes or `None`.
-    """
-    def __init__(self,
-                 before_input=None,
-                 after_input=None,
-                 left_margin=None,
-                 top_toolbars=None,
-                 bottom_toolbars=None,
-                 input_processors=None,
-                 menus=None,
-                 lexer=None,
-                 min_height=0,
-                 show_tildes=False,
-                 buffer_name='default'):
-
-        self.before_input = before_input
-        self.after_input = after_input
-        self.left_margin = left_margin
-        self.top_toolbars = top_toolbars or []
-        self.bottom_toolbars = bottom_toolbars or []
-        self.input_processors = input_processors or []
-        self.menus = menus or []
-        self.min_height = min_height
-        self.show_tildes = show_tildes
-        self.buffer_name = buffer_name
-
-        if lexer:
-            self.lexer = lexer(
-                stripnl=False,
-                stripall=False,
-                ensurenl=False)
-        else:
-            self.lexer = None
-
-        #: LRU cache for the lexer.
-        #: Often, due to cursor movement and undo/redo operations, it happens that
-        #: in a short time, the same document has to be lexed. This is a faily easy
-        #: way to cache such an expensive operation.
-        self._token_lru_cache = _SimpleLRUCache(maxsize=8)
-
-        self.reset()
-
-    def _buffer(self, cli):
-        """
-        The buffer object that contains the 'main' content.
-        """
-        return cli.buffers[self.buffer_name]
-
-    def reset(self):
-        #: Vertical scrolling position of the main content.
-        self.vertical_scroll = 0
-
-    def get_input_tokens(self, cli):
-        """
-        Tokenize input text for highlighting.
-        """
-        buffer = self._buffer(cli)
-
-        def get():
-            if self.lexer:
-                tokens = list(self.lexer.get_tokens(buffer.text))
-            else:
-                tokens = [(Token, buffer.text)]
-
-            for p in self.input_processors:
-                tokens = p.process_tokens(tokens)
-            return tokens
-
-        return self._token_lru_cache.get(buffer.text, get)
-
-    def _get_highlighted_characters(self, buffer):
-        """
-        Return a dictionary that maps the index of input string characters to
-        their Token in case of highlighting.
-        """
-        highlighted_characters = {}
-
-        # In case of incremental search, highlight all matches.
-        if buffer.isearch_state:
-            for index in buffer.document.find_all(buffer.isearch_state.isearch_text):
-                if index == buffer.cursor_position:
-                    token = Token.SearchMatch.Current
-                else:
-                    token = Token.SearchMatch
-
-                highlighted_characters.update(dict([
-                    (x, token) for x in range(index, index + len(buffer.isearch_state.isearch_text))
-                ]))
-
-        # In case of selection, highlight all matches.
-        selection_range = buffer.document.selection_range()
-        if selection_range:
-            from_, to = selection_range
-
-            for i in range(from_, to):
-                highlighted_characters[i] = Token.SelectedText
-
-        return highlighted_characters
-
-    def _write_input(self, cli, screen):
-        # Get tokens
-        # Note: we add the space character at the end, because that's where
-        #       the cursor can also be.
-        input_tokens = self.get_input_tokens(cli) + [(Token, ' ')]
-
-        # 'Explode' tokens in characters.
-        input_tokens = [(token, c) for token, text in input_tokens for c in text]
-
-        # Apply highlighting.
-        if not (cli.is_exiting or cli.is_aborting or cli.is_returning):
-            highlighted_characters = self._get_highlighted_characters(self._buffer(cli))
-
-            for index, token in highlighted_characters.items():
-                input_tokens[index] = (token, input_tokens[index][1])
-
-        for index, (token, c) in enumerate(input_tokens):
-            # Insert char.
-            screen.write_char(c, token,
-                              string_index=index,
-                              set_cursor_position=(index == self._buffer(cli).cursor_position))
-
-
-    def _need_to_show_completion_menu(self, cli):
-        return self.menus and self.menus[0].is_visible(cli)
-
-    def write_to_screen(self, cli, screen, min_height):
-        """
-        Render the prompt to a `Screen` instance.
-
-        :param screen: The :class:`Screen` class into which we write the output.
-        :param min__height: The space (amount of rows) available from the
-                            top of the prompt, until the bottom of the
-                            terminal. We don't have to use them, but we can.
-        """
-
-        # Write actual content (scrolled).
-        y = self._write_input_scrolled(cli, screen,
-                                      lambda scr: self.write_content(cli, scr),
-                                      min_height=max(self.min_height, min_height),
-                                      top_margin=top_toolbars_height,
-                                      bottom_margin=bottom_toolbars_height)
-
-    def write_content(self, cli, screen):
-        """
-        Write the actual content at the current position at the screen.
-        """
-        if self.before_input is not None:
-            self.before_input.write(cli, screen)
-
-        self._write_input(cli, screen)
-
-        if self.after_input is not None:
-            self.after_input.write(cli, screen)
