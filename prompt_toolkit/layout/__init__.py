@@ -392,8 +392,8 @@ class BufferControl(UIControl):
                  input_processors=None,
                  menus=None,
                  lexer=None,
-                 min_height=0,
                  show_tildes=False,
+                 show_line_numbers=True,
                  buffer_name='default'):
 
         self.before_input = before_input
@@ -401,8 +401,8 @@ class BufferControl(UIControl):
         self.left_margin = left_margin
         self.input_processors = input_processors or []
         self.menus = menus or []
-        self.min_height = min_height
         self.show_tildes = show_tildes  # XXX: tildes should become part of the left margin.
+        self.show_line_numbers = show_line_numbers
         self.buffer_name = buffer_name
 
         if lexer:
@@ -418,12 +418,6 @@ class BufferControl(UIControl):
         #: in a short time, the same document has to be lexed. This is a faily easy
         #: way to cache such an expensive operation.
         self._token_lru_cache = _SimpleLRUCache(maxsize=8)
-
-        self.reset()
-
-    def reset(self):
-        #: Vertical scrolling position of the main content.
-        self.vertical_scroll = 0
 
     def _buffer(self, cli):
         """
@@ -510,10 +504,16 @@ class BufferControl(UIControl):
         """
         left_margin_width = self.left_margin.width(cli) if self.left_margin else 0
 #
+
+#        screen.write_highlighted([
+#            (Token.LineNumber, '%%%ii. ' % (self.width(cli) - 2) % (line_number + 1)),
+#        ])
+
+
         self._write_input(cli, screen)
 
 
-        screen.cursor_position = Point(y=screen.cursor_position.y - self.vertical_scroll,
+        screen.cursor_position = Point(y=screen.cursor_position.y,
                                        x=screen.cursor_position.x + left_margin_width)
 
         return # XXX

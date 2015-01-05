@@ -131,8 +131,8 @@ class Screen(object):
 
         insert_pos = self._y, self._x  # XXX: make a Point of this?
 
-        if string_index is not None:
-            self._cursor_mappings[string_index] = insert_pos
+#        if string_index is not None:
+#            self._cursor_mappings[string_index] = insert_pos
 
         if set_cursor_position:
             self.cursor_position = Point(y=self._y, x=self._x)
@@ -145,20 +145,22 @@ class Screen(object):
 
         # Insertion of a 'visible' character.
         else:
-            if char_obj.z_index >= self._buffer[self._y][self._x].z_index:
-                self._buffer[self._y][self._x] = char_obj
+            self_buffer_y = self._buffer[self._y]
+
+            if char_obj.z_index >= self_buffer_y[self._x].z_index:
+                self_buffer_y[self._x] = char_obj
 
             # When we have a double width character, store this byte in the
             # second cell. So that if this character gets deleted afterwarsd,
             # the ``output_screen_diff`` will notice that this byte is also
             # gone and redraw both cells.
             if char_width > 1:
-                self._buffer[self._y][self._x+1] = Char(six.unichr(0))
+                self_buffer_y[self._x+1] = Char(six.unichr(0))
 
             # Move position
             self._x += char_width
 
-        return insert_pos
+#        return insert_pos
 
     def write_at_pos(self, y, x, char_obj):
         """
@@ -201,7 +203,7 @@ class Screen(object):
         y = write_position.ypos
         width = write_position.width
         max_x = x + width
-        max_y = y + write_position.min_height
+#        max_y = y + write_position.min_height
 
         for token, text in data:
             for char in text:
@@ -214,10 +216,8 @@ class Screen(object):
                     y += 1
                     x = write_position.xpos
 
-                    if y >= max_y:
-                        return
-
-                insert_pos = self._y, self._x  # XXX: make a Point of this?
+#                    if y >= max_y:
+#                        return
 
 #                if string_index is not None:
 #                    self._cursor_mappings[string_index] = insert_pos
@@ -231,25 +231,25 @@ class Screen(object):
                     x = write_position.xpos
 #                    line_number += 1
 
-                    if y >= max_y:
-                        return
+#                    if y >= max_y:
+#                        return
 
                 # Insertion of a 'visible' character.
                 else:
-                    if char_obj.z_index >= self._buffer[y][x].z_index:
-                        self._buffer[y][x] = char_obj
+                    buffer_y = self._buffer[y]
+                    if char_obj.z_index >= buffer_y[x].z_index:
+                        buffer_y[x] = char_obj
 
                     # When we have a double width character, store this byte in the
                     # second cell. So that if this character gets deleted afterwarsd,
                     # the ``output_screen_diff`` will notice that this byte is also
                     # gone and redraw both cells.
                     if char_width > 1:
-                        self._buffer[y][x+1] = Char(six.unichr(0))
+                        buffer_y[x+1] = Char(six.unichr(0))
 
                     # Move position
                     x += char_width
 
-        return insert_pos
 
 
 
