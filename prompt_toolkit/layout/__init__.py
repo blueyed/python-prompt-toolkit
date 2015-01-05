@@ -376,11 +376,7 @@ class FillControl(UIControl):
         pass
 
     def write_to_screen(self, cli, screen, width, height):
-        c = Char(char=self.character, token=self.token)
-
-        for x in range(0, width):
-            for y in range(0, height):
-                screen.write_at_pos(y, x, c)
+        screen.fill_rectangle(self.character, self.token, width, height)
 
 
 class BufferControl(UIControl):
@@ -488,12 +484,15 @@ class BufferControl(UIControl):
             for index, token in highlighted_characters.items():
                 input_tokens[index] = (token, input_tokens[index][1])
 
-        for index, (token, c) in enumerate(input_tokens):
-            # Insert char.
-            screen.write_char(c, token,
-                              string_index=index,
-                              set_cursor_position=(index == self._buffer(cli).cursor_position))
+        def margin(line_number):
+            if line_number is not None:
+                return [(Token, u'%5i. ' % (line_number + 1))]
+            else:
+                return [(Token, ' ' * 7)]
 
+        screen.write_at_position(input_tokens, WritePosition(0, 0, screen.size.columns, screen.size.rows),
+                                 set_cursor_position_at_index=self._buffer(cli).cursor_position,
+                                 margin=margin)
 
     def write_to_screen(self, cli, screen, width, height):
         """
@@ -502,19 +501,7 @@ class BufferControl(UIControl):
 
         :return: Cursor row position after the scroll region.
         """
-        left_margin_width = self.left_margin.width(cli) if self.left_margin else 0
-#
-
-#        screen.write_highlighted([
-#            (Token.LineNumber, '%%%ii. ' % (self.width(cli) - 2) % (line_number + 1)),
-#        ])
-
-
         self._write_input(cli, screen)
-
-
-        screen.cursor_position = Point(y=screen.cursor_position.y,
-                                       x=screen.cursor_position.x + left_margin_width)
 
         return # XXX
 

@@ -195,18 +195,54 @@ class Screen(object):
             for c in text:
                 self.write_char(c, token=token)
 
-    def write_at_position(self, data, write_position, z_index=0):  # XXX: make DRY.
+    def fill_rectangle(self, character, token, width, height):
+        c = Char(char=character, token=token)
+        buffer = self._buffer
+
+        for x in range(0, width):
+            for y in range(0, height):
+                buffer[y][x] = c
+
+    def write_at_position(self, data, write_position, z_index=0,
+                          set_cursor_position_at_index=None,
+                          margin=None):  # XXX: make DRY.
         """
         Write data at :class:`WritePosition`.
         """
+        buffer = self._buffer
+        width = write_position.width
         x = write_position.xpos
         y = write_position.ypos
-        width = write_position.width
         max_x = x + width
+        index = 0
+        line_number = 0
+        requires_line_feed = True
 #        max_y = y + write_position.min_height
+
+        def do_line_feed(x, number):
+            if margin is not None:
+                for token, text in margin(number):
+                    for char in text:
+                        char_obj = Char(char, token, z_index)
+                        char_width = char_obj.width
+                        buffer[y][x] = char_obj
+
+                        # Store '0' in the second cell of double width characters.
+                        if char_width > 1:
+                            buffer[y][x+1] = Char(six.unichr(0))
+
+                        # Move position
+                        x += char_width
+            return x
+
 
         for token, text in data:
             for char in text:
+                # Line feed.
+                if requires_line_feed:
+                    x = do_line_feed(x, line_number)
+                    requires_line_feed = False
+
                 char_obj = Char(char, token, z_index)
                 char_width = char_obj.width
 
@@ -215,6 +251,7 @@ class Screen(object):
                 if x + char_width > max_x:
                     y += 1
                     x = write_position.xpos
+                    x = do_line_feed(x, None)
 
 #                    if y >= max_y:
 #                        return
@@ -222,21 +259,22 @@ class Screen(object):
 #                if string_index is not None:
 #                    self._cursor_mappings[string_index] = insert_pos
 
-#                if set_cursor_position:
-#                    self.cursor_position = Point(y=self._y, x=self._x)
+                if set_cursor_position_at_index == index:
+                    self.cursor_position = Point(y=self._y, x=self._x)
 
                 # Insertion of newline
                 if char == '\n':
                     y += 1
                     x = write_position.xpos
-#                    line_number += 1
+                    requires_line_feed = True
+                    line_number += 1
 
 #                    if y >= max_y:
 #                        return
 
                 # Insertion of a 'visible' character.
                 else:
-                    buffer_y = self._buffer[y]
+                    buffer_y = buffer[y]
                     if char_obj.z_index >= buffer_y[x].z_index:
                         buffer_y[x] = char_obj
 
@@ -250,8 +288,7 @@ class Screen(object):
                     # Move position
                     x += char_width
 
-
-
+                index += 1
 
 class WritePosition(object):
     def __init__(self, xpos, ypos, width, min_height, max_height=None):
