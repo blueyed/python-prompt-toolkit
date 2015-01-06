@@ -48,13 +48,11 @@ class _SimpleLRUCache(object):
         return value
 
 
-
-
-
 class LayoutDimension(object):
-    def __init__(self, min=None, max=None):
+    def __init__(self, min=None, max=None, preferred=None):
         self.min = min or 1
         self.max = max or 1000 * 1000
+        self.preferred = preferred or self.min
 
     @classmethod
     def exact(cls, amount):
@@ -67,15 +65,17 @@ class LayoutDimension(object):
 def _sum_layout_dimensions(dimensions):
     min = sum([d.min for d in dimensions if d.min is not None])
     max = sum([d.max for d in dimensions if d.max is not None])
+    preferred = sum([d.preferred for d in dimensions])
 
-    return LayoutDimension(min=min, max=max)
+    return LayoutDimension(min=min, max=max, preferred=preferred)
 
 
 def _max_layout_dimensions(dimensions):
     min_ = max([d.min for d in dimensions if d.min is not None])
     max_ = max([d.max for d in dimensions if d.max is not None])
+    preferred = max([d.preferred for d in dimensions])
 
-    return LayoutDimension(min=min_, max=max_)
+    return LayoutDimension(min=min_, max=max_, preferred=preferred)
 
 
 @add_metaclass(ABCMeta)
@@ -140,8 +140,16 @@ class HSplit(Layout):
         # Find optimal sizes. (Start with minimal size, increase until we cover
         # the whole height.)
         sizes = [d.min for d in dimensions]
+
         i = 0
+        while sum(sizes) < min(write_position.max_height, sum_dimensions.preferred):
+            # Increase until we meet at least the 'preferred' size.
+            if sizes[i] < dimensions[i].preferred:
+                sizes[i] += 1
+            i = (i + 1) % len(sizes)
+
         while sum(sizes) < min(write_position.min_height, sum_dimensions.max):
+            # Increase until we use the available space. (or until "max")
             if sizes[i] < dimensions[i].max:
                 sizes[i] += 1
             i = (i + 1) % len(sizes)
@@ -239,13 +247,23 @@ class Window(Layout):
 
     def width(self, cli):
         if self.filter is None or self.filter(cli):
-            return self._width or LayoutDimension()
+            width = self._width or LayoutDimension()
+            preferred_width = self.content.preferred_width(cli)
+            if preferred_width is not None:
+                return LayoutDimension(min=width.min, max=width.max, preferred=preferred_width)
+            else:
+                return width
         else:
             return LayoutDimension.exact(0)
 
     def height(self, cli):
         if self.filter is None or self.filter(cli):
-            return self._height or LayoutDimension()
+            height = self._height or LayoutDimension()
+            preferred_height = self.content.preferred_height(cli)
+            if preferred_height is not None:
+                return LayoutDimension(min=height.min, max=height.max, preferred=preferred_height)
+            else:
+                return height
         else:
             return LayoutDimension.exact(0)
 
@@ -341,6 +359,12 @@ class UIControl(object):
         # Default reset. (Doesn't have to be implemented.)
         pass
 
+    def preferred_width(self, cli):
+        return None
+
+    def preferred_height(self, cli):
+        return None
+
     @abstractmethod
     def write_to_screen(self, cli, screen, width, height):
         """
@@ -420,6 +444,13 @@ class BufferControl(UIControl):
         The buffer object that contains the 'main' content.
         """
         return cli.buffers[self.buffer_name]
+
+    def preferred_width(self, cli):
+        # Return the length of the longest line.
+        return max(map(len, self._buffer(cli).document.lines))
+
+    def preferred_height(self, cli):
+        return self._buffer(cli).document.line_count
 
     def get_input_tokens(self, cli):
         """
